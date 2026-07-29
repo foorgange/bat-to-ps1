@@ -4,20 +4,21 @@
 $ErrorActionPreference = "Stop"
 
 $SkillsDir = "$env:USERPROFILE\.claude\skills"
-
-if (-not (Test-Path $SkillsDir)) {
-    New-Item -ItemType Directory -Path $SkillsDir -Force | Out-Null
-}
-
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host "Installing bat-to-ps1 skills..." -ForegroundColor Cyan
 
-Copy-Item -Path "$ScriptDir\skills\bat2ps1.md" -Destination "$SkillsDir\bat2ps1.md" -Force
-Write-Host "  [OK] bat2ps1.md -> $SkillsDir\bat2ps1.md"
+# bat2ps1
+$dst = "$SkillsDir\bat2ps1"
+if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Path $dst -Force | Out-Null }
+Copy-Item -Path "$ScriptDir\skills\bat2ps1\SKILL.md" -Destination "$dst\SKILL.md" -Force
+Write-Host "  [OK] bat2ps1 -> $dst\SKILL.md"
 
-Copy-Item -Path "$ScriptDir\skills\bat-run.md" -Destination "$SkillsDir\bat-run.md" -Force
-Write-Host "  [OK] bat-run.md -> $SkillsDir\bat-run.md"
+# bat-run
+$dst = "$SkillsDir\bat-run"
+if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Path $dst -Force | Out-Null }
+Copy-Item -Path "$ScriptDir\skills\bat-run\SKILL.md" -Destination "$dst\SKILL.md" -Force
+Write-Host "  [OK] bat-run -> $dst\SKILL.md"
 
 Write-Host ""
 Write-Host "Installation complete!" -ForegroundColor Green

@@ -9,11 +9,11 @@ mkdir -p "$SKILLS_DIR"
 
 echo "Installing bat-to-ps1 skills..."
 
-cp "$SCRIPT_DIR/skills/bat2ps1.md" "$SKILLS_DIR/bat2ps1.md"
-echo "  [OK] bat2ps1.md -> $SKILLS_DIR/bat2ps1.md"
+cp -r "$SCRIPT_DIR/skills/bat2ps1" "$SKILLS_DIR/bat2ps1"
+echo "  [OK] bat2ps1 -> $SKILLS_DIR/bat2ps1/SKILL.md"
 
-cp "$SCRIPT_DIR/skills/bat-run.md" "$SKILLS_DIR/bat-run.md"
-echo "  [OK] bat-run.md -> $SKILLS_DIR/bat-run.md"
+cp -r "$SCRIPT_DIR/skills/bat-run" "$SKILLS_DIR/bat-run"
+echo "  [OK] bat-run -> $SKILLS_DIR/bat-run/SKILL.md"
 
 echo ""
 echo "Installation complete!"
