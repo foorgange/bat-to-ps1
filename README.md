@@ -29,12 +29,13 @@
 
 ### English
 
-On some Windows 11 machines, **double-clicking a `.bat` file does nothing useful**. The behavior is bizarre:
+On some Windows 11 machines, **running a `.bat` file does nothing useful** — regardless of how you try. The behavior is bizarre:
 
 1. A terminal window pops up ✅
 2. But instead of cmd.exe executing the script, **PowerShell opens with an interactive prompt** ❌
 3. The `.bat` file's commands are **never executed** ❌
-4. Meanwhile, `.ps1` files work perfectly when double-clicked ✅
+4. This happens **whether you double-click the file OR run `cmd /c` from the command line** ❌
+5. Meanwhile, `.ps1` files work normally ✅
 
 This is especially frustrating when:
 
@@ -44,12 +45,13 @@ This is especially frustrating when:
 
 ### 中文
 
-在某些 Windows 11 电脑上，**双击 `.bat` 文件没有任何反应**。具体表现为：
+在某些 Windows 11 电脑上，**运行 `.bat` 文件没有任何反应**——无论你用什么方式。具体表现为：
 
 1. 弹出了一个终端窗口 ✅
 2. 但出来的不是 cmd.exe，而是 **PowerShell 的交互式提示符** ❌
 3. `.bat` 文件里的命令**完全没有被执行** ❌
-4. 与此同时，`.ps1` 文件双击却能正常运行 ✅
+4. **不管是双击文件，还是通过 `cmd /c` 命令行执行，结果都一样** ❌
+5. 与此同时，`.ps1` 文件却能正常运行 ✅
 
 这在你遇到以下场景时特别让人抓狂：
 
@@ -62,6 +64,8 @@ This is especially frustrating when:
 ## Diagnosis History / 诊断历史
 
 > 以下是使用 Claude Code 在 2026-07-29 对该问题进行的**完整诊断记录**。如果你也遇到了同样的问题，这些尝试结果可以作为参考，避免重复踩坑。
+>
+> **⚠️ 重要说明**：以下所有尝试（Round 1–5），无论采取何种修复方式，最终结果完全一致——**无论是双击 `.bat` 文件，还是通过 `cmd /c` 等命令行方式执行，全部都是什么都不执行**，没有出现过任何"部分解决"或"仅命令行可用"的中间状态。最终不得不采用曲线救国方案。
 
 ### Round 1 / 第一轮：文件类型关联 (ftype) 损坏检查
 
@@ -72,7 +76,7 @@ This is especially frustrating when:
 
 **尝试修复**：`ftype batfile="%SystemRoot%\System32\cmd.exe" /c "%1" %*`
 
-**结果**：❌ 由于在 Git Bash (MSYS) 环境中执行，路径转换机制将 `"` 转义成了 `\"`，导致注册表中存储了字面量的反斜杠。Windows ShellExecute 尝试执行字面量路径 `\"C:\WINDOWS\...\cmd.exe\"`，报错「Windows 无法访问指定设备、路径或文件」。
+**结果**：❌ 由于在 Git Bash (MSYS) 环境中执行，路径转换机制将 `"` 转义成了 `\"`，导致注册表中存储了字面量的反斜杠。Windows ShellExecute 尝试执行字面量路径 `\"C:\WINDOWS\...\cmd.exe\"`，报错「Windows 无法访问指定设备、路径或文件」。**修复后注册表值已正确，但双击和 `cmd /c` 执行 .bat 仍然什么都不执行。**
 
 **教训**：绝不要在 Git Bash 中执行 `ftype` 命令来修改 Windows 文件关联。
 
@@ -82,7 +86,7 @@ This is especially frustrating when:
 
 **尝试修复**：使用 `Set-ItemProperty` 写入正确的值，逐字节验证注册表内容，确认无多余反斜杠。
 
-**结果**：❌ 注册表值完全正确，但双击行为不变——仍然弹出 PowerShell，不执行 bat 逻辑。
+**结果**：❌ 注册表值完全正确，但行为完全不变——无论是双击还是 `cmd /c` 执行 .bat，仍然弹出 PowerShell，不执行任何 bat 逻辑。
 
 ---
 
@@ -107,46 +111,46 @@ This is especially frustrating when:
 | SRP (Software Restriction Policies) | 无限规则 ✅ |
 | Windows Terminal 委托设置 | 全零 GUID（未委托） ✅ |
 
-**结果**：❌ **所有能检查的注册表和策略项全部正常**，但仍无法解决问题。
+**结果**：❌ **所有能检查的注册表和策略项全部正常**，但无论是双击还是 `cmd /c` 执行 .bat，依然什么都不执行。
 
 ---
 
-### Round 4 / 第四轮：确认 cmd.exe 本身正常
+### Round 4 / 第四轮：确认各种执行方式的表现
 
 | 测试方式 | 结果 |
 |----------|------|
-| `cmd.exe /c test.bat`（命令行） | ✅ 正常执行 |
-| `powershell Start-Process test.bat` | ✅ 正常执行 |
-| `explorer.exe test.bat`（模拟双击） | ✅ 正常执行 |
-| `rundll32` ShellExecute | ✅ 正常执行 |
+| `cmd.exe /c test.bat`（命令行） | ❌ 弹出 PowerShell，不执行 |
+| `powershell Start-Process test.bat` | ❌ 弹出 PowerShell，不执行 |
+| `explorer.exe test.bat`（模拟双击） | ❌ 弹出 PowerShell，不执行 |
+| `rundll32` ShellExecute | ❌ 弹出 PowerShell，不执行 |
 | **Explorer GUI 双击** | ❌ 弹出 PowerShell，不执行 |
 
-**关键发现**：**只有通过 Windows Explorer 的 GUI 双击才会出问题**，程序化调用一切正常。这说明问题不在用户态的注册表或文件关联，而在更深层的 Explorer 进程钩子。
+**关键发现**：**无论通过何种方式触发 `.bat` 文件执行，结果完全一致——一律弹出 PowerShell 交互式提示符，bat 脚本内容不执行。** 这说明问题不在用户态的注册表或文件关联，而在更深层的系统钩子——所有通向 cmd.exe 的路径都被拦截了。
 
 ---
 
 ### Round 5 / 第五轮：尝试 PowerShell 包装器绕路
 
-**思路**：既然 .ps1 能正常运行，那就修改 `batfile` 注册表关联，让双击 .bat 时先启动 PowerShell，再由 PowerShell 调用 cmd.exe。
+**思路**：既然常规修复完全无效，尝试修改 `batfile` 注册表关联，让双击 .bat 时先启动 PowerShell，再由 PowerShell 调用 cmd.exe。
 
 | 版本 | 方案 | 结果 |
 |------|------|------|
-| V1 | `Start-Process cmd.exe -NoNewWindow` | ❌ cmd.exe 输出在双击窗口中不可见 |
-| V2 | 直接 `cmd.exe /c` | ❌ 双击时输出仍不可见 |
-| V3 | `Start-Process -WindowStyle Normal`（独立窗口） | ❌ 无效 |
+| V1 | `Start-Process cmd.exe -NoNewWindow` | ❌ 双击和命令行执行均无输出 |
+| V2 | 直接 `cmd.exe /c` | ❌ 双击和命令行执行均无输出 |
+| V3 | `Start-Process -WindowStyle Normal`（独立窗口） | ❌ 双击和命令行执行均无输出 |
 
-**结果**：❌ 无论如何包装，通过 Explorer 双击触发的 PowerShell 进程都无法正常显示 cmd.exe 的输出。
+**结果**：❌ 无论如何包装，通过任何方式触发执行，PowerShell 都无法正常调用 cmd.exe 来运行 bat 脚本。问题比预想的更深层。
 
 ---
 
-### Round 6 / 第六轮：放弃修复 — 曲线救国
+### Round 6 / 第六轮：放弃修复 — 不得不曲线救国
 
-**最终判断**：问题根因不在用户可配置的层面，可能在以下某一层：
+**最终判断**：经过 5 轮尝试，所有修复手段全部无效——无论是双击还是命令行执行 .bat 文件，结果都是什么都不执行。问题根因不在用户可配置的层面，可能在以下某一层：
 - 内核驱动级安全软件（文件 ACL 含 `CodexSandboxUsers` 组）
-- Explorer 进程级 ShellExecute 钩子
+- 系统级 ShellExecute 钩子
 - 其他安全产品注入的 DLL
 
-**采用的替代方案**：创建 Claude Code skill，将 `.bat` 转为 `.ps1` 包装器，利用 .ps1 可以正常双击执行的特点。
+**由于无法从根本上修复，不得不采用替代方案**：创建 Claude Code skill，将 `.bat` 转为 `.ps1` 包装器。核心思路是利用 .ps1 可以正常执行的特点，在 .ps1 中通过 `cmd.exe /c` 调用原始 .bat 文件，绕开系统对 .bat 文件启动的拦截。
 
 ---
 
@@ -154,13 +158,13 @@ This is especially frustrating when:
 
 ### English
 
-This is a **personal project** created to solve a real, frustrating problem I encountered on my own machine. After exhausting every reasonable diagnostic avenue (see above), I accepted that a system-level fix was not feasible and built a pragmatic workaround.
+This is a **personal project** created to solve a real, frustrating problem I encountered on my own machine. After exhausting every reasonable diagnostic avenue (see above) — and finding that **both double-clicking AND `cmd /c` command-line execution resulted in the same outcome (nothing executes)** — I accepted that a system-level fix was not feasible and built a pragmatic workaround.
 
 If you've also experienced `.bat` files mysteriously refusing to run on your Windows machine, and none of the usual fixes (file associations, registry checks, `ftype`, `assoc`, etc.) helped — this project is for you. It won't fix your system, but it **will** let you run those `.bat` files.
 
 ### 中文
 
-这是一个**自用项目**，为了解决我自己电脑上一个真实且令人抓狂的问题。在尝试了所有合理的诊断方法（见上文）均告失败后，我选择接受现实，用一个实用的曲线救国方案绕过系统层面的问题。
+这是一个**自用项目**，为了解决我自己电脑上一个真实且令人抓狂的问题。在尝试了所有合理的诊断方法（见上文）均告失败后——**无论是双击还是 `cmd /c` 命令行执行，结果统统是什么都不执行**——我选择接受现实，用一个实用的曲线救国方案绕过系统层面的问题。
 
 如果你也遇到过 `.bat` 文件莫名其妙无法运行的情况，且常规修复手段（文件关联、注册表、`ftype`、`assoc` 等）全部无效——那这个项目就是为你准备的。它不会修复你的系统，但它**能让你用上那些 `.bat` 文件**。
 
@@ -186,12 +190,13 @@ Because `cmd.exe /c` is the **exact same engine** that normally executes `.bat` 
 ### Visual / 流程示意
 
 ```
-双击 .bat 文件 → ❌ PowerShell 弹出，脚本不执行
+尝试运行 .bat 文件 → ❌ PowerShell 弹出，脚本不执行
+  (无论双击、cmd /c、Start-Process 等任何方式)
 
-双击 _runner.ps1  → ✅ PowerShell 弹出
-                      → cmd.exe /c original.bat
-                      → 正常执行所有命令
-                      → 退出代码正确返回
+运行 _runner.ps1  → ✅ PowerShell 弹出
+                    → cmd.exe /c original.bat
+                    → 正常执行所有命令
+                    → 退出代码正确返回
 ```
 
 ---
@@ -365,7 +370,7 @@ try {
 |------|------|
 | **OS** | Windows 11 Home China 10.0.26200 |
 | **终端** | Windows Terminal 1.24 + Oh My Posh |
-| **Shell** | PowerShell 5.1 & 7.x |
+| **现象** | .bat 无法执行（双击或 `cmd /c` 均弹出 PowerShell，不执行脚本） |
 | **安全软件** | 推测存在（文件 ACL 含 `CodexSandboxUsers` 组） |
 | **Claude Code** | Fable 5 / Opus 4.8 |
 | **Git** | 2.47.0 |

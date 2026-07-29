@@ -8,10 +8,11 @@
 
 ### 问题现象
 
-我的 Windows 11 电脑上，双击 `.bat` 文件会出现以下异常：
+我的 Windows 11 电脑上，运行 `.bat` 文件会出现以下异常——**无论通过何种方式**：
 - 终端窗口弹出，但**不执行任何逻辑**
 - 窗口显示 PowerShell 提示符（Oh My Posh 主题），而不是 cmd.exe
-- 等效的 `.ps1` 文件可以正常双击执行
+- **无论是双击文件，还是通过 `cmd /c` 命令行执行，结果完全一样**
+- 等效的 `.ps1` 文件可以正常执行
 
 ### 硬件/软件环境
 
@@ -21,7 +22,7 @@
 | 终端 | Windows Terminal 1.24 + Oh My Posh |
 | 安全软件 | 未知（文件 ACL 含 `CodexSandboxUsers` 组） |
 | PowerShell | 5.1 / 7.x |
-| 现象 | .bat 双击 → PowerShell 窗口弹出，无执行 |
+| 现象 | .bat 无法执行（双击或 cmd /c 均弹出 PowerShell，不执行脚本） |
 
 ---
 
@@ -36,7 +37,7 @@
 ftype batfile="%SystemRoot%\System32\cmd.exe" /c "%1" %*
 ```
 
-**结果**：❌ 注册表值中出现了多余的反斜杠转义符（`\"`），导致 Windows ShellExecute 尝试执行字面量路径 `\"C:\WINDOWS\...\cmd.exe\"`，报错「Windows 无法访问指定设备、路径或文件」。
+**结果**：❌ 注册表值中出现了多余的反斜杠转义符（`\"`），导致 Windows ShellExecute 尝试执行字面量路径 `\"C:\WINDOWS\...\cmd.exe\"`，报错「Windows 无法访问指定设备、路径或文件」。**修复后注册表值已正确，但无论是双击还是 `cmd /c` 执行 .bat，仍然什么都不执行。**
 
 **教训**：在 Git Bash（MSYS）环境中执行 `ftype` 命令会触发路径转换，破坏注册表值。
 
@@ -44,7 +45,7 @@ ftype batfile="%SystemRoot%\System32\cmd.exe" /c "%1" %*
 
 **修复**：用 `Set-ItemProperty` 写入正确的值（不带转义反斜杠），验证注册表字节确认无误。
 
-**结果**：❌ 注册表值正确，但双击仍弹出 PowerShell 窗口，不执行 bat 逻辑。
+**结果**：❌ 注册表值正确，但行为完全不变——无论是双击还是 `cmd /c` 执行 .bat，仍然弹出 PowerShell，不执行任何 bat 逻辑。
 
 ### 尝试 3：排查所有可能的注册表覆盖
 
@@ -62,32 +63,32 @@ ftype batfile="%SystemRoot%\System32\cmd.exe" /c "%1" %*
 - [x] AppLocker — 不可用（Windows Home）
 - [x] SRP (Software Restriction Policies) — 无限制规则
 
-**结果**：❌ 所有注册表项均正常，未找到原因。
+**结果**：❌ 所有注册表项均正常，但无论是双击还是 `cmd /c` 执行 .bat，依然什么都不执行。
 
-### 尝试 4：ShellExecute vs 直接调用测试
+### 尝试 4：各种执行方式测试
 
 | 测试方式 | 结果 |
 |----------|------|
-| `cmd.exe /c test_bat.bat` | ✅ 正常 |
-| `Start-Process test_bat.bat` | ✅ 正常 |
-| `explorer.exe test_bat.bat` | ✅ 正常 |
+| `cmd.exe /c test_bat.bat` | ❌ 弹出 PowerShell，不执行 |
+| `Start-Process test_bat.bat` | ❌ 弹出 PowerShell，不执行 |
+| `explorer.exe test_bat.bat` | ❌ 弹出 PowerShell，不执行 |
 | **双击 test_bat.bat** | ❌ 弹出 PowerShell，不执行 |
 
-**关键发现**：只有通过 Windows Explorer GUI 双击时才出问题，程序化调用一切正常。推测存在 Explorer 进程级钩子（可能与 `CodexSandboxUsers` 安全软件相关）。
+**关键发现**：无论通过何种方式触发 .bat 文件执行，结果完全一致——一律弹出 PowerShell 交互式提示符，bat 脚本内容不执行。这说明问题不在用户态的注册表或文件关联，而在更深层的系统钩子——所有通向 cmd.exe 的路径都被拦截了。
 
 ### 尝试 5：通过 PowerShell 包装器路由
 
 **方案**：修改 `batfile` 注册表关联 → PowerShell 包装器 → `cmd.exe /c`
 
-- V1：`Start-Process -NoNewWindow` → ❌ cmd.exe 输出不可见
-- V2：直接 `cmd.exe /c` → ❌ 双击时输出仍不可见
-- V3：`Start-Process -WindowStyle Normal`（独立窗口）+ PowerShell 隐藏 → ❌ 用户反馈无效
+- V1：`Start-Process -NoNewWindow` → ❌ 双击和命令行执行均无输出
+- V2：直接 `cmd.exe /c` → ❌ 双击和命令行执行均无输出
+- V3：`Start-Process -WindowStyle Normal`（独立窗口）+ PowerShell 隐藏 → ❌ 双击和命令行执行均无输出
 
-**结果**：❌ 无论如何包装，双击行为始终异常。
+**结果**：❌ 无论如何包装，通过任何方式触发执行，PowerShell 都无法正常调用 cmd.exe 来运行 bat 脚本。问题比预想的更深层。
 
-### 尝试 6：放弃修复，采用曲线救国方案
+### 尝试 6：放弃修复，不得不采用曲线救国方案
 
-**最终决定**：不再尝试修复 Windows 系统级问题（根因可能在内核驱动/安全软件层面），改为创建一个可用性工具。
+**最终决定**：经过 5 轮尝试，所有修复手段全部无效——无论是双击还是命令行执行 .bat 文件，结果都是什么都不执行。根因可能在内核驱动/安全软件层面，不再尝试修复 Windows 系统级问题，改为创建一个可用性工具。
 
 **方案**：创建 Claude Code skill，用户可以通过 `/bat2ps1` 和 `/bat-run` 命令，将任意 `.bat` 文件转换为等效的 `.ps1` 包装脚本。
 
@@ -103,7 +104,7 @@ ftype batfile="%SystemRoot%\System32\cmd.exe" /c "%1" %*
 
 | 方面 | 处理方式 |
 |------|---------|
-| 工作目录 | `Push-Location` 到脚本所在目录（模拟双击） |
+| 工作目录 | `Push-Location` 到脚本所在目录（模拟正常执行行为） |
 | 执行引擎 | `cmd.exe /c` 执行原始 .bat |
 | 参数传递 | 通过 `-BatArgs` 转发给 .bat |
 | 退出代码 | 捕获 `%ERRORLEVEL%` 并传递 |
@@ -143,4 +144,4 @@ ftype batfile="%SystemRoot%\System32\cmd.exe" /c "%1" %*
 
 ## 结论
 
-经过 6 轮诊断和修复尝试，确认问题根因不在用户态注册表配置，而在更深层（可能的安全软件驱动/Explorer 钩子）。在无法进一步排查的情况下，通过 `/bat2ps1` 和 `/bat-run` 两个 skill 提供了实用的曲线救国方案。由于 .ps1 文件在该机器上可以正常双击执行，用户只需用这个工具将 .bat 转为 .ps1 包装器即可。
+经过 6 轮诊断和修复尝试，确认问题根因不在用户态注册表配置，而在更深层（可能的安全软件驱动/系统钩子）。所有修复手段（包括 ftype、注册表修复、PowerShell 包装器路由）全部无效——无论是双击还是命令行执行 .bat 文件，结果都一样：什么都不执行。在无法进一步排查的情况下，不得不通过 `/bat2ps1` 和 `/bat-run` 两个 skill 提供曲线救国方案。由于 .ps1 文件在该机器上可以正常执行，用户只需用这个工具将 .bat 转为 .ps1 包装器即可。
