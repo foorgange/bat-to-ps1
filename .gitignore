@@ -1,0 +1,23 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local scratch used while testing wrappers
+/tmp/
+*.log
+
+# PowerShell artifacts
+*.ps1.bak
+*.nupkg
+*.pfx
+artifacts/
+
+# Note: generated *_runner.ps1 wrappers are created next to a user's own .bat
+# files by the /bat2ps1 skill and are intentionally not part of this repository.
